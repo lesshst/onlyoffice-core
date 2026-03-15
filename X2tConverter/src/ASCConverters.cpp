@@ -478,12 +478,23 @@ namespace NExtractTools
 				std::wstring sDoctDir = combinePath(convertParams.m_sTempDir, L"doct_unpacked");
 				NSDirectory::CreateDirectory(sDoctDir);
 				std::wstring sTFile = combinePath(sDoctDir, L"Editor.bin");
+				const bool bNeedDocxHtmlMapper =
+					params.m_nFormatFrom && params.m_sFileFrom &&
+					AVS_OFFICESTUDIO_FILE_DOCUMENT_DOCX == *params.m_nFormatFrom &&
+					(AVS_OFFICESTUDIO_FILE_DOCUMENT_HTML == nFormatTo ||
+					 AVS_OFFICESTUDIO_FILE_DOCUMENT_HTML_IN_CONTAINER == nFormatTo);
 
 				nRes = docx_dir2doct_bin(sFromWithChanges, sTFile, params, convertParams);
 
 				if (SUCCEEDED_X2T(nRes))
 				{
+					if (bNeedDocxHtmlMapper)
+						convertParams.m_sTempParamOOXMLFile = *params.m_sFileFrom;
+
 					nRes = fromDoctBin(sTFile, sTo, nFormatTo, params, convertParams);
+
+					if (bNeedDocxHtmlMapper)
+						convertParams.m_sTempParamOOXMLFile = L"";
 				}
 			}
 		}

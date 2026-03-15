@@ -37,9 +37,176 @@
 #include "../../../HtmlFile2/htmlfile2.h"
 #include "../../../Common/3dParty/md/md2html.h"
 #include "common.h"
+#include "../../../DesktopEditor/common/ProcessEnv.h"
+
+#ifdef _LINUX
+#include <unistd.h>
+#include <sys/wait.h>
+extern char **environ;
+#endif
+
+#include <cwctype>
 
 namespace NExtractTools
 {
+	namespace NSHtmlMapper
+	{
+		inline std::wstring ToLowerCopy(const std::wstring& value)
+		{
+			std::wstring out = value;
+			for (wchar_t& ch : out)
+				ch = std::towlower(ch);
+			return out;
+		}
+
+		inline bool EndsWithInsensitive(const std::wstring& value, const std::wstring& suffix)
+		{
+			std::wstring lowerValue = ToLowerCopy(value);
+			std::wstring lowerSuffix = ToLowerCopy(suffix);
+			if (lowerValue.size() < lowerSuffix.size())
+				return false;
+			return lowerValue.compare(lowerValue.size() - lowerSuffix.size(), lowerSuffix.size(), lowerSuffix) == 0;
+		}
+
+		inline std::wstring ResolveMapperScriptPath()
+		{
+			if (NSProcessEnv::IsPresent(NSProcessEnv::Converter::gc_wordHtmlMapperScript))
+				return NSProcessEnv::GetStringValue(NSProcessEnv::Converter::gc_wordHtmlMapperScript);
+
+			return combinePath(NSFile::GetProcessDirectory(), L"../tools/word_html_mapper.py");
+		}
+
+		inline std::wstring ResolvePythonPath()
+		{
+			if (NSProcessEnv::IsPresent(NSProcessEnv::Converter::gc_wordHtmlMapperPython))
+				return NSProcessEnv::GetStringValue(NSProcessEnv::Converter::gc_wordHtmlMapperPython);
+
+			if (NSFile::CFileBinary::Exists(L"/usr/bin/python3"))
+				return L"/usr/bin/python3";
+			if (NSFile::CFileBinary::Exists(L"/usr/local/bin/python3"))
+				return L"/usr/local/bin/python3";
+			return L"";
+		}
+
+		inline bool IsEnabled()
+		{
+			if (!NSProcessEnv::IsPresent(NSProcessEnv::Converter::gc_wordHtmlMapperEnable))
+				return true;
+			return NSProcessEnv::GetBoolValue(NSProcessEnv::Converter::gc_wordHtmlMapperEnable);
+		}
+
+		inline bool ShouldAnnotateDocxHtml(const ConvertParams& convertParams)
+		{
+			if (!IsEnabled())
+				return false;
+			if (convertParams.m_sTempParamOOXMLFile.empty())
+				return false;
+			if (!NSFile::CFileBinary::Exists(convertParams.m_sTempParamOOXMLFile))
+				return false;
+			return EndsWithInsensitive(convertParams.m_sTempParamOOXMLFile, L".docx");
+		}
+
+		inline int RunMapperProcess(
+			const std::wstring& pythonBin,
+			const std::wstring& scriptPath,
+			const std::wstring& docxPath,
+			const std::wstring& htmlPath,
+			const std::wstring& outPath
+		)
+		{
+#ifdef WIN32
+			return -1;
+#else
+			pid_t pid = fork();
+			if (pid < 0)
+				return -1;
+
+			if (pid == 0)
+			{
+				std::string pythonBinA = U_TO_UTF8(pythonBin);
+				std::string scriptPathA = U_TO_UTF8(scriptPath);
+				std::string docxPathA = U_TO_UTF8(docxPath);
+				std::string htmlPathA = U_TO_UTF8(htmlPath);
+				std::string outPathA = U_TO_UTF8(outPath);
+
+				const char* nargs[8];
+				nargs[0] = pythonBinA.c_str();
+				nargs[1] = scriptPathA.c_str();
+				nargs[2] = "--docx";
+				nargs[3] = docxPathA.c_str();
+				nargs[4] = "--html";
+				nargs[5] = htmlPathA.c_str();
+				nargs[6] = "--out";
+				nargs[7] = outPathA.c_str();
+
+				const char* argsWithNull[9];
+				for (int i = 0; i < 8; ++i)
+					argsWithNull[i] = nargs[i];
+				argsWithNull[8] = NULL;
+
+				execve(pythonBinA.c_str(), (char* const*)argsWithNull, environ);
+				_exit(127);
+			}
+
+			int status = 0;
+			while (-1 == waitpid(pid, &status, 0));
+			if (WIFEXITED(status))
+				return WEXITSTATUS(status);
+			return status;
+#endif
+		}
+
+		inline void AnnotateHtmlIfNeeded(const std::wstring& htmlPath, ConvertParams& convertParams)
+		{
+			if (!ShouldAnnotateDocxHtml(convertParams))
+				return;
+
+			std::wstring scriptPath = ResolveMapperScriptPath();
+			if (!NSFile::CFileBinary::Exists(scriptPath))
+			{
+				std::wcerr << L"[word-html-mapper] skip: script not found: " << scriptPath << std::endl;
+				return;
+			}
+
+			std::wstring mappedHtml = combinePath(convertParams.m_sTempDir, L"index.mapped.html");
+			std::wstring pythonBin = ResolvePythonPath();
+			if (pythonBin.empty())
+			{
+				std::wcerr << L"[word-html-mapper] skip: python3 not found" << std::endl;
+				return;
+			}
+			int mapperCode = RunMapperProcess(
+				pythonBin,
+				scriptPath,
+				convertParams.m_sTempParamOOXMLFile,
+				htmlPath,
+				mappedHtml
+			);
+
+			if (0 != mapperCode)
+			{
+				std::wcerr << L"[word-html-mapper] failed: exit=" << mapperCode
+						   << L" python=" << pythonBin
+						   << L" script=" << scriptPath
+						   << L" docx=" << convertParams.m_sTempParamOOXMLFile
+						   << std::endl;
+				return;
+			}
+
+			if (!NSFile::CFileBinary::Exists(mappedHtml))
+			{
+				std::wcerr << L"[word-html-mapper] failed: mapped html not produced: " << mappedHtml << std::endl;
+				return;
+			}
+
+			if (!NSFile::CFileBinary::Copy(mappedHtml, htmlPath))
+			{
+				std::wcerr << L"[word-html-mapper] failed: cannot overwrite html: " << htmlPath << std::endl;
+				return;
+			}
+		}
+	}
+
 	_UINT32 html2doct_bin(const std::wstring& sFrom, const std::wstring& sTo, InputParams& params, ConvertParams& convertParams)
 	{
 		std::wstring sDocxDir = combinePath(convertParams.m_sTempDir, L"docx_unpacked");
@@ -238,6 +405,7 @@ namespace NExtractTools
 			return nRes;
 
 		std::wstring sHtmlFile = combinePath(convertParams.m_sTempDir, L"index.html");
+		NSHtmlMapper::AnnotateHtmlIfNeeded(sHtmlFile, convertParams);
 
 		if (!NSFile::CFileBinary::Copy(sHtmlFile, sTo))
 			nRes = AVS_FILEUTILS_ERROR_CONVERT;
@@ -252,6 +420,7 @@ namespace NExtractTools
 			return nRes;
 
 		std::wstring sHtmlFile = combinePath(convertParams.m_sTempDir, L"index.html");
+		NSHtmlMapper::AnnotateHtmlIfNeeded(sHtmlFile, convertParams);
 
 		COfficeUtils oZip;
 		if (S_FALSE == oZip.CompressFileOrDirectory(sHtmlFile, sTo))

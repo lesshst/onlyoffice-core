@@ -7,8 +7,7 @@ Goal:
 - annotate HTML nodes with data-ooxml-id / data-ooxml-path
 
 Current mapping strategy (v2):
-- paragraph-level: w:p  <-> <p>
-- heading-level:   w:p(style Heading*) <-> <h1..h6>
+- block-level:     next w:p  <-> next <p>/<h1..h6>
 - table-level:     w:tbl <-> <table>
 - row-level:       w:tr  <-> <tr>
 - cell-level:      w:tc  <-> <td>/<th>
@@ -39,6 +38,7 @@ class OoxmlNode:
     path: str
     idx: int
     style: Optional[str] = None
+    anchor: Optional[str] = None
 
     @property
     def oid(self) -> str:
@@ -65,12 +65,35 @@ def _style_of_p(p: ET.Element) -> Optional[str]:
     return None
 
 
+def _build_body_paragraph_anchors(body: ET.Element) -> dict[int, str]:
+    anchors: dict[int, str] = {}
+
+    def walk_story(parent: ET.Element, prefix: tuple[str, ...]) -> None:
+        paragraph_i = 0
+        table_i = 0
+        for child in list(parent):
+            local = child.tag.rsplit("}", 1)[-1]
+            if local == "p":
+                anchors[id(child)] = "/".join((*prefix, f"p{paragraph_i}"))
+                paragraph_i += 1
+                continue
+            if local != "tbl":
+                continue
+
+            table_prefix = (*prefix, f"t{table_i}")
+            table_i += 1
+            for row_i, row in enumerate(child.findall("./w:tr", NS)):
+                for cell_i, cell in enumerate(row.findall("./w:tc", NS)):
+                    walk_story(cell, (*table_prefix, f"r{row_i}", f"c{cell_i}"))
+
+
 def build_ooxml_nodes(docx_path: Path) -> List[OoxmlNode]:
     root = _extract_doc_xml(docx_path)
     body = root.find("./w:body", NS)
     if body is None:
         return []
 
+    paragraph_anchor_by_elem = _build_body_paragraph_anchors(body)
     nodes: List[OoxmlNode] = []
     p_i = tbl_i = tr_i = tc_i = r_i = t_i = 0
 
@@ -81,7 +104,7 @@ def build_ooxml_nodes(docx_path: Path) -> List[OoxmlNode]:
         if local == "p":
             style = _style_of_p(elem)
             p_i += 1
-            nodes.append(OoxmlNode("p", xpath, p_i, style))
+            nodes.append(OoxmlNode("p", xpath, p_i, style, paragraph_anchor_by_elem.get(id(elem))))
         elif local == "tbl":
             tbl_i += 1
             nodes.append(OoxmlNode("tbl", xpath, tbl_i))
@@ -117,14 +140,13 @@ def annotate_html(html: str, nodes: List[OoxmlNode]) -> str:
     tag_re = re.compile(r"<([a-zA-Z][a-zA-Z0-9]*)\b[^>]*>", re.M)
 
     p_nodes = [n for n in nodes if n.kind == "p"]
-    h_nodes = [n for n in nodes if n.kind == "p" and (n.style or "").startswith("Heading")]
     tbl_nodes = [n for n in nodes if n.kind == "tbl"]
     tr_nodes = [n for n in nodes if n.kind == "tr"]
     tc_nodes = [n for n in nodes if n.kind == "tc"]
     r_nodes = [n for n in nodes if n.kind == "r"]
     t_nodes = [n for n in nodes if n.kind == "t"]
 
-    p_i = h_i = tbl_i = tr_i = tc_i = r_i = t_i = 0
+    p_i = tbl_i = tr_i = tc_i = r_i = t_i = 0
 
     out = []
     last = 0
@@ -134,12 +156,10 @@ def annotate_html(html: str, nodes: List[OoxmlNode]) -> str:
         tag = m.group(1).lower()
 
         chosen: Optional[OoxmlNode] = None
-        if tag == "p" and p_i < len(p_nodes):
+        chosen_text: Optional[OoxmlNode] = None
+        if tag in {"p", "h1", "h2", "h3", "h4", "h5", "h6"} and p_i < len(p_nodes):
             chosen = p_nodes[p_i]
             p_i += 1
-        elif tag in {"h1", "h2", "h3", "h4", "h5", "h6"} and h_i < len(h_nodes):
-            chosen = h_nodes[h_i]
-            h_i += 1
         elif tag == "table" and tbl_i < len(tbl_nodes):
             chosen = tbl_nodes[tbl_i]
             tbl_i += 1
@@ -152,9 +172,12 @@ def annotate_html(html: str, nodes: List[OoxmlNode]) -> str:
         elif tag == "span" and r_i < len(r_nodes):
             chosen = r_nodes[r_i]
             r_i += 1
+            if t_i < len(t_nodes):
+                chosen_text = t_nodes[t_i]
+                t_i += 1
         elif tag in {"span", "em", "strong", "a"} and t_i < len(t_nodes):
             # best-effort carrier for text runs
-            chosen = t_nodes[t_i]
+            chosen_text = t_nodes[t_i]
             t_i += 1
 
         if chosen:
@@ -164,6 +187,11 @@ def annotate_html(html: str, nodes: List[OoxmlNode]) -> str:
 
             open_tag = _inject_attr(open_tag, f"{key_prefix}-id", chosen.oid)
             open_tag = _inject_attr(open_tag, f"{key_prefix}-path", chosen.path)
+            if chosen.kind == "p" and chosen.anchor:
+                open_tag = _inject_attr(open_tag, "data-docx-anchor", chosen.anchor)
+        if chosen_text:
+            open_tag = _inject_attr(open_tag, "data-ooxml-t-id", chosen_text.oid)
+            open_tag = _inject_attr(open_tag, "data-ooxml-t-path", chosen_text.path)
 
         out.append(open_tag)
         last = m.end()

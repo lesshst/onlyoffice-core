@@ -47,6 +47,9 @@ namespace NSProcessEnv
 		static const char* gc_proxyUser           = "proxyUser";
 		static const char* gc_proxyHeader         = "proxyHeader";
 		static const char* gc_oformAsPdf          = "oformAsPdf";
+		static const char* gc_wordHtmlMapperEnable = "wordHtmlMapperEnable";
+		static const char* gc_wordHtmlMapperScript = "wordHtmlMapperScript";
+		static const char* gc_wordHtmlMapperPython = "wordHtmlMapperPython";
 	}
 
 	// serialize

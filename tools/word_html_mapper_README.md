@@ -8,8 +8,7 @@
 
 ## 支持映射（v2）
 
-- `w:p` ↔ `<p>`
-- `w:p`（Heading 样式）↔ `<h1..h6>`
+- 下一个 `w:p` ↔ 下一个 `<p>/<h1..h6>`
 - `w:tbl` ↔ `<table>`
 - `w:tr` ↔ `<tr>`
 - `w:tc` ↔ `<td>/<th>`
@@ -29,3 +28,57 @@ python3 tools/word_html_mapper.py \
 
 - 这是“转换后注入映射”的改造，适合先用 ONLYOFFICE 产出 HTML，再补充可追溯信息。
 - 如果你要做“字符级（run/text）映射”，可以在此基础上继续扩展到 `w:r` / `w:t`。
+
+## 测试
+
+基础单测不依赖额外 Python 包：
+
+```bash
+python3 tools/test_word_html_mapper_unit.py
+```
+
+如需对真实样本做 smoke test，可在已启动业务侧 `docx -> html` 接口后执行：
+
+```bash
+python3 tools/test_word_html_mapper_smoke.py --limit 3
+```
+
+## 当前集成边界
+
+当前建议的源码级集成边界是：
+
+- 只对 `docx -> html` 自动执行映射补注
+- 不对 `doc/wps -> html` 直接做映射
+
+也就是说，主链路应收敛为：
+
+- `docx -> html`
+  - 由 ONLYOFFICE-core 在生成 `index.html` 后自动调用本脚本
+- `doc/wps -> html`
+  - 先在业务侧或外层服务中做 `doc/wps -> docx`
+  - 再进入 `docx -> html`
+
+## 自动接线时使用的配置项
+
+如果在 `ONLYOFFICE-core` 中启用自动调用，可通过进程 `options` 控制：
+
+- `wordHtmlMapperEnable`
+  - 是否启用自动映射
+  - 默认：启用
+- `wordHtmlMapperScript`
+  - mapper 脚本路径
+- `wordHtmlMapperPython`
+  - python3 解释器路径
+
+## 设计取舍
+
+当前自动接线版本优先保证：
+
+- 主转换链路改动小
+- 失败时不影响原始 HTML 产出
+- 只在存在原始 `docx` 路径时执行
+
+因此：
+
+- 映射失败时，只打印错误并跳过
+- 不会让 `docx -> html` 整体转换失败
