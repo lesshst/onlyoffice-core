@@ -86,6 +86,9 @@ def _build_body_paragraph_anchors(body: ET.Element) -> dict[int, str]:
                 for cell_i, cell in enumerate(row.findall("./w:tc", NS)):
                     walk_story(cell, (*table_prefix, f"r{row_i}", f"c{cell_i}"))
 
+    walk_story(body, ("body",))
+    return anchors
+
 
 def build_ooxml_nodes(docx_path: Path) -> List[OoxmlNode]:
     root = _extract_doc_xml(docx_path)

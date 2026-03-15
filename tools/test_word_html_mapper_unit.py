@@ -5,6 +5,8 @@ import importlib.util
 import sys
 import unittest
 from pathlib import Path
+import tempfile
+import zipfile
 
 
 SCRIPT_PATH = Path(__file__).resolve().parent / "word_html_mapper.py"
@@ -17,6 +19,32 @@ SPEC.loader.exec_module(MODULE)
 
 
 class WordHtmlMapperUnitTest(unittest.TestCase):
+    def test_build_ooxml_nodes_extracts_body_paragraph_anchors(self) -> None:
+        doc_xml = """<?xml version="1.0" encoding="UTF-8" standalone="yes"?>
+<w:document xmlns:w="http://schemas.openxmlformats.org/wordprocessingml/2006/main">
+  <w:body>
+    <w:p><w:r><w:t>标题</w:t></w:r></w:p>
+    <w:tbl>
+      <w:tr>
+        <w:tc>
+          <w:p><w:r><w:t>单元格</w:t></w:r></w:p>
+        </w:tc>
+      </w:tr>
+    </w:tbl>
+    <w:p><w:r><w:t>正文</w:t></w:r></w:p>
+  </w:body>
+</w:document>
+"""
+        with tempfile.TemporaryDirectory() as tmp_dir:
+            docx_path = Path(tmp_dir) / "sample.docx"
+            with zipfile.ZipFile(docx_path, "w") as zf:
+                zf.writestr("word/document.xml", doc_xml)
+
+            nodes = MODULE.build_ooxml_nodes(docx_path)
+
+        paragraph_nodes = [node for node in nodes if node.kind == "p"]
+        self.assertEqual([node.anchor for node in paragraph_nodes], ["body/p0", "body/t0/r0/c0/p0", "body/p1"])
+
     def test_heading_and_paragraph_consume_distinct_paragraph_nodes(self) -> None:
         html = "<h1>标题</h1><p>正文</p>"
         nodes = [
