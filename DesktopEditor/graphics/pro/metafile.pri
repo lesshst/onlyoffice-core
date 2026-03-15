@@ -77,7 +77,7 @@ METAFILE_PATH = $$PWD/../../raster/Metafile
 	}
 }
 
-!metafile_disable_svg {
+!metafile_disable_svg:exists($$METAFILE_PATH/../../../Common/3dParty/html/katana-parser/src/katana.h) {
 	DEFINES += METAFILE_SUPPORT_SVG
 
 	# DEPRECATED ENGINE. REMOVE IN 7.6+ VERSIONS
@@ -153,6 +153,8 @@ METAFILE_PATH = $$PWD/../../raster/Metafile
 
 		include($$METAFILE_PATH/../../../Common/3dParty/html/css/CssCalculator.pri)
 	}
+} else:!metafile_disable_svg {
+	message("katana-parser sources not found; disabling metafile SVG support")
 }
 
 !metafile_disable_svm {

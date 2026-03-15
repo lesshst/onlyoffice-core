@@ -26,6 +26,7 @@ Thumbs.db
 *.dat
 *.txt
 *.log
+*.make
 
 *.ipch
 *.ipch
@@ -46,5 +47,8 @@ DesktopEditor/fontengine/js/common/freetype-2.10.4
 
 .qtc_clangd
 Common/3dParty/openssl/openssl/
+Common/3dParty/v8_89/_gclient_*
+tools/__pycache__/
+tools/smoke_output/
 
 msvc_make.bat

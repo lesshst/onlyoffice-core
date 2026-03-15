@@ -28,12 +28,21 @@ core_ios {
 
 }
 
-core_windows {
-    LIBS += $$OPENSSL_LIBS_DIRECTORY/libssl.lib
-	LIBS += $$OPENSSL_LIBS_DIRECTORY/libcrypto.lib
-} else {
-    LIBS += $$OPENSSL_LIBS_DIRECTORY/libssl.a
-	LIBS += $$OPENSSL_LIBS_DIRECTORY/libcrypto.a
-}
+OPENSSL_INCLUDE_DIRECTORY = $$OPENSSL_LIBS_DIRECTORY/../include
 
-INCLUDEPATH += $$OPENSSL_LIBS_DIRECTORY/../include
+exists($$OPENSSL_INCLUDE_DIRECTORY/openssl/sha.h) {
+	INCLUDEPATH += $$OPENSSL_INCLUDE_DIRECTORY
+
+	core_windows {
+	    LIBS += $$OPENSSL_LIBS_DIRECTORY/libssl.lib
+		LIBS += $$OPENSSL_LIBS_DIRECTORY/libcrypto.lib
+	} else {
+	    LIBS += $$OPENSSL_LIBS_DIRECTORY/libssl.a
+		LIBS += $$OPENSSL_LIBS_DIRECTORY/libcrypto.a
+	}
+} else {
+	message("prebuilt OpenSSL not found; using system OpenSSL")
+	INCLUDEPATH += /usr/include
+	LIBS += -lssl
+	LIBS += -lcrypto
+}

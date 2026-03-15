@@ -5,7 +5,14 @@
 #endif
 
 #include "openssl/sha.h"
+#if __has_include("openssl/md2.h")
 #include "openssl/md2.h"
+#endif
+#if defined(OPENSSL_NO_MD2) || !defined(MD2_DIGEST_LENGTH)
+#define HAVE_OPENSSL_MD2 0
+#else
+#define HAVE_OPENSSL_MD2 1
+#endif
 #include "openssl/md4.h"
 #include "openssl/md5.h"
 #include "openssl/whrlpool.h"
@@ -39,10 +46,14 @@ unsigned char* CHash::hash(const unsigned char* data, int size, int alg)
 	{
 	case haMD2:
 	{
+#if HAVE_OPENSSL_MD2
 		nBufLen = 16;
 		pBufData = (unsigned char*)m_fAllocator(nBufLen);
 		MD2(data, d, pBufData);
 		break;
+#else
+		return NULL;
+#endif
 	}
 	case haMD4:
 	{
@@ -248,8 +259,12 @@ void hash_iteration(unsigned char*& input, int iter, unsigned char*& tmp, int al
 	{
 	case CHash::haMD2:
 	{
+#if HAVE_OPENSSL_MD2
 		MD2(input, alg_size + 4, tmp);
 		break;
+#else
+		return;
+#endif
 	}
 	case CHash::haMD4:
 	{
@@ -321,10 +336,15 @@ unsigned char* CHash::hash2(const char* password, const char* salt, int spinCoun
 	{
 	case haMD2:
 	{
+#if HAVE_OPENSSL_MD2
 		alg_size = 16;
 		pBuffer1 = (unsigned char*)m_fAllocator(alg_size + 4);
 		MD2(inputData, inputDataLen, pBuffer1);
 		break;
+#else
+		free(inputData);
+		return NULL;
+#endif
 	}
 	case haMD4:
 	{

@@ -1,5 +1,17 @@
-INCLUDEPATH += $$PWD/build/$$CORE_BUILDS_PLATFORM_PREFIX/include
+BOOST_INCLUDE_DIR = $$PWD/build/$$CORE_BUILDS_PLATFORM_PREFIX/include
 CORE_BOOST_LIBS = $$PWD/build/$$CORE_BUILDS_PLATFORM_PREFIX/lib
+
+BOOST_ROOT_OVERRIDE = $$(OO_BOOST_ROOT)
+core_linux:isEmpty(BOOST_ROOT_OVERRIDE):exists(/opt/oo-boost-1.74/include/boost/version.hpp) {
+    BOOST_ROOT_OVERRIDE = /opt/oo-boost-1.74
+}
+
+!isEmpty(BOOST_ROOT_OVERRIDE) {
+    BOOST_INCLUDE_DIR = $${BOOST_ROOT_OVERRIDE}/include
+    CORE_BOOST_LIBS = $${BOOST_ROOT_OVERRIDE}/lib
+}
+
+INCLUDEPATH += $$BOOST_INCLUDE_DIR
 
 core_ios:CONFIG += disable_enum_constexpr_conversion
 core_android:CONFIG += disable_enum_constexpr_conversion

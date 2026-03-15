@@ -19,10 +19,35 @@ core_windows {
 }
 
 core_linux {
-    INCLUDEPATH += $$PWD/$$CORE_BUILDS_PLATFORM_PREFIX/build/include
+    ICU_INCLUDE_DIR_LINUX = $$PWD/$$CORE_BUILDS_PLATFORM_PREFIX/build/include
+    ICU_BUNDLED_LIBS_PATH_LINUX = $$PWD/$$CORE_BUILDS_PLATFORM_PREFIX/build
+    ICU_ROOT_OVERRIDE = $$(OO_ICU_ROOT)
 
-    LIBS        += $$PWD/$$CORE_BUILDS_PLATFORM_PREFIX/build/libicuuc.so.$$ICU_MAJOR_VER
-    LIBS        += $$PWD/$$CORE_BUILDS_PLATFORM_PREFIX/build/libicudata.so.$$ICU_MAJOR_VER
+    isEmpty(ICU_ROOT_OVERRIDE):exists(/opt/oo-boost-1.74/include/unicode/utypes.h) {
+        ICU_ROOT_OVERRIDE = /opt/oo-boost-1.74
+    }
+
+    !isEmpty(ICU_ROOT_OVERRIDE) {
+        ICU_INCLUDE_DIR_LINUX = $${ICU_ROOT_OVERRIDE}/include
+        LIBS += -L$${ICU_ROOT_OVERRIDE}/lib -licuuc -licudata -licui18n
+    } else {
+        INCLUDEPATH += $$ICU_INCLUDE_DIR_LINUX
+
+        ICU_USE_SYSTEM_LIBS_LINUX = false
+        exists(/usr/lib/aarch64-linux-gnu/libicuuc.so.$$ICU_MAJOR_VER):ICU_USE_SYSTEM_LIBS_LINUX = true
+        exists(/usr/lib/x86_64-linux-gnu/libicuuc.so.$$ICU_MAJOR_VER):ICU_USE_SYSTEM_LIBS_LINUX = true
+        exists(/usr/lib64/libicuuc.so.$$ICU_MAJOR_VER):ICU_USE_SYSTEM_LIBS_LINUX = true
+
+        contains(ICU_USE_SYSTEM_LIBS_LINUX, true) {
+            LIBS += -licuuc
+            LIBS += -licudata
+        } else {
+            LIBS += $$ICU_BUNDLED_LIBS_PATH_LINUX/libicuuc.so.$$ICU_MAJOR_VER
+            LIBS += $$ICU_BUNDLED_LIBS_PATH_LINUX/libicudata.so.$$ICU_MAJOR_VER
+        }
+    }
+
+    INCLUDEPATH += $$ICU_INCLUDE_DIR_LINUX
 }
 
 core_mac {

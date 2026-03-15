@@ -1,4 +1,8 @@
-CONFIG += enable_support_shaper
+exists($$PWD/../../../Common/3dParty/harfbuzz/harfbuzz.pri) {
+    CONFIG += enable_support_shaper
+} else {
+    message("harfbuzz sources not found; disabling enable_support_shaper")
+}
 
 core_windows {
     MSVC_VERSION_DETECT = $$(VisualStudioVersion)

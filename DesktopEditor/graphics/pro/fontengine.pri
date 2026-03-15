@@ -45,14 +45,23 @@ enable_support_shaper {
 # -------------------------------------------------
 
 # ------------------- brotli ----------------------
-include($$PWD/../../../Common/3dParty/brotli/brotli.pri)
+exists($$PWD/../../../Common/3dParty/brotli/brotli/c/include/brotli/decode.h) {
+	include($$PWD/../../../Common/3dParty/brotli/brotli.pri)
+} else {
+	message("brotli sources not found; disabling freetype brotli support")
+}
 # -------------------------------------------------
 
 # ------------------- hyphen ----------------------
 HEADERS += $$FONT_ENGINE_PATH/languages.h
 
 HEADERS += $$FONT_ENGINE_PATH/TextHyphen.h
-SOURCES += $$FONT_ENGINE_PATH/TextHyphen.cpp
+exists($$PWD/../../../Common/3dParty/hyphen/hyphen/hnjalloc.h):exists($$PWD/../../../Common/3dParty/hyphen/hyphen/hyphen.c) {
+	SOURCES += $$FONT_ENGINE_PATH/TextHyphen.cpp
+} else {
+	SOURCES += $$FONT_ENGINE_PATH/TextHyphenStub.cpp
+	message("hyphen sources not found; using TextHyphen stub implementation")
+}
 # -------------------------------------------------
 
 core_ios {

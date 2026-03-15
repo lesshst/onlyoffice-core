@@ -284,8 +284,10 @@ SOURCES += \
 SOURCES += \
 	$$LIB_GRAPHICS_PRI_PATH/raster/PICT/PICFile.cpp
 
-!build_xp {
+!build_xp:exists($$CORE_ROOT_DIR/Common/3dParty/heif/libheif/libheif/api/libheif/heif.h) {
 	CONFIG += support_heif
+} else:!build_xp {
+	message("libheif sources not found; disabling support_heif")
 }
 
 support_heif {
