@@ -2,15 +2,15 @@
 from __future__ import annotations
 
 import argparse
+import importlib.util
 import json
 import re
+import sys
 import zipfile
 from dataclasses import asdict, dataclass
 from html.parser import HTMLParser
 from pathlib import Path
 from xml.etree import ElementTree as ET
-
-from word_ooxml_patch_executor import paragraph_text_for_matching, resolve_ooxml_path
 
 W_NS = "http://schemas.openxmlformats.org/wordprocessingml/2006/main"
 NS = {"w": W_NS}
@@ -29,6 +29,22 @@ _BLOCK_TAG_KIND = {
     "td": "tc",
     "th": "tc",
 }
+
+
+def _load_patch_executor_module():
+    script_path = Path(__file__).resolve().parent / "word_ooxml_patch_executor.py"
+    spec = importlib.util.spec_from_file_location("word_ooxml_patch_executor", script_path)
+    if spec is None or spec.loader is None:
+        raise RuntimeError(f"failed to load patch executor module: {script_path}")
+    module = importlib.util.module_from_spec(spec)
+    sys.modules.setdefault(spec.name, module)
+    spec.loader.exec_module(module)
+    return module
+
+
+_PATCH_EXECUTOR = _load_patch_executor_module()
+paragraph_text_for_matching = _PATCH_EXECUTOR.paragraph_text_for_matching
+resolve_ooxml_path = _PATCH_EXECUTOR.resolve_ooxml_path
 
 
 @dataclass
