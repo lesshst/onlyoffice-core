@@ -50,5 +50,6 @@ Common/3dParty/openssl/openssl/
 Common/3dParty/v8_89/_gclient_*
 tools/__pycache__/
 tools/smoke_output/
+tools/.last_documentserver_image_tag
 
 msvc_make.bat
