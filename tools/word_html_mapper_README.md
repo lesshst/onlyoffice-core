@@ -45,6 +45,22 @@ python3 tools/validate_word_html_ooxml_mapping.py \
   --html ./sample.mapped.html
 ```
 
+如需在本地测试 `OOXML path -> docx patch` 这套规则，可使用
+`tools/word_ooxml_patch_executor.py`。这份脚本在 `ONLYOFFICE-core` 中现在只保留
+为测试/验证工具，正式业务 patch 执行链已迁移到：
+
+- `03-write-doc/backend/app/services/word_ooxml_patch_executor.py`
+
+因此它的 CLI 需要显式确认测试模式：
+
+```bash
+python3 tools/word_ooxml_patch_executor.py \
+  --test-tool \
+  --docx ./sample.docx \
+  --operations ./operations.json \
+  --out ./sample.patched.docx
+```
+
 如需对真实样本做 smoke test，可在已启动业务侧 `docx -> html` 接口后执行：
 
 ```bash

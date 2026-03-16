@@ -35,7 +35,7 @@ def _load_patch_executor_module():
     script_path = Path(__file__).resolve().parent / "word_ooxml_patch_executor.py"
     spec = importlib.util.spec_from_file_location("word_ooxml_patch_executor", script_path)
     if spec is None or spec.loader is None:
-        raise RuntimeError(f"failed to load patch executor module: {script_path}")
+        raise RuntimeError(f"failed to load OOXML validation helper module: {script_path}")
     module = importlib.util.module_from_spec(spec)
     sys.modules.setdefault(spec.name, module)
     spec.loader.exec_module(module)

@@ -1,14 +1,25 @@
 #!/usr/bin/env python3
 """
-Patch docx text by stable OOXML paths.
+Test/validation-only OOXML patch helper.
 
-Current scope:
-- part: word/document.xml
-- target node: w:p
-- operation payload: same shape as write-doc operations_json entries
+This module exists inside ONLYOFFICE-core so the mapper validation tools and
+unit tests can reuse the exact same OOXML-path parsing and paragraph-level text
+replacement logic when validating `docx -> html` mappings.
 
-This is the first step toward an OnlyOffice-side patch executor that shares
-the same OOXML node model used by docx->html mapping.
+It is NOT the production patch executor anymore. The live audit patch chain now
+uses the backend-local executor in:
+
+    03-write-doc/backend/app/services/word_ooxml_patch_executor.py
+
+Supported parts:
+- word/document.xml
+- word/header*.xml
+- word/footer*.xml
+- word/footnotes.xml
+- word/endnotes.xml
+
+Supported target nodes:
+- w:p paragraphs, including paragraphs nested inside tables and textboxes
 """
 
 from __future__ import annotations
@@ -28,6 +39,20 @@ XML_NS = "http://www.w3.org/XML/1998/namespace"
 NS = {"w": W_NS}
 
 ET.register_namespace("w", W_NS)
+
+VALIDATION_ONLY_NOTICE = (
+    "ONLYOFFICE-core/tools/word_ooxml_patch_executor.py is a test/validation "
+    "helper. Production audit patch execution lives in "
+    "03-write-doc/backend/app/services/word_ooxml_patch_executor.py."
+)
+
+SUPPORTED_PART_PATTERNS = (
+    re.compile(r"^word/document\.xml$"),
+    re.compile(r"^word/header\d+\.xml$"),
+    re.compile(r"^word/footer\d+\.xml$"),
+    re.compile(r"^word/footnotes\.xml$"),
+    re.compile(r"^word/endnotes\.xml$"),
+)
 
 
 @dataclass
@@ -51,6 +76,11 @@ class PatchOperation:
 class PatchResult:
     applied_count: int = 0
     skipped_count: int = 0
+
+
+def is_supported_part_name(part_name: str) -> bool:
+    name = str(part_name or "").strip().lstrip("/")
+    return any(pattern.fullmatch(name) for pattern in SUPPORTED_PART_PATTERNS)
 
 
 def _local_name(tag: str) -> str:
@@ -347,12 +377,10 @@ def parse_operations(raw: list[dict]) -> list[PatchOperation]:
     return operations
 
 
-def apply_operations_to_document_xml(root: ET.Element, operations: Iterable[PatchOperation]) -> PatchResult:
+def apply_operations_to_xml_root(root: ET.Element, operations: Iterable[PatchOperation]) -> PatchResult:
     result = PatchResult()
     grouped: dict[str, list[PatchOperation]] = {}
     for op in operations:
-        if op.applied_part_name != "word/document.xml":
-            raise ValueError(f"unsupported part for now: {op.applied_part_name}")
         if not op.applied_ooxml_path:
             raise ValueError("missing applied_ooxml_path")
         grouped.setdefault(op.applied_ooxml_path, []).append(op)
@@ -410,6 +438,10 @@ def apply_operations_to_document_xml(root: ET.Element, operations: Iterable[Patc
     return result
 
 
+def apply_operations_to_document_xml(root: ET.Element, operations: Iterable[PatchOperation]) -> PatchResult:
+    return apply_operations_to_xml_root(root, operations)
+
+
 def apply_operations_to_docx_bytes(docx_bytes: bytes, operations: list[PatchOperation]) -> tuple[bytes, PatchResult]:
     if not docx_bytes:
         raise ValueError("empty docx payload")
@@ -418,28 +450,57 @@ def apply_operations_to_docx_bytes(docx_bytes: bytes, operations: list[PatchOper
         names = set(zin.namelist())
         if "word/document.xml" not in names:
             raise ValueError("word/document.xml not found")
-        document_root = ET.fromstring(zin.read("word/document.xml"))
+        grouped: dict[str, list[PatchOperation]] = {}
+        for op in operations:
+            part_name = str(op.applied_part_name or "word/document.xml").strip().lstrip("/") or "word/document.xml"
+            if not is_supported_part_name(part_name):
+                raise ValueError(f"unsupported part: {part_name}")
+            if part_name not in names:
+                raise ValueError(f"{part_name} not found")
+            grouped.setdefault(part_name, []).append(op)
+        roots = {part_name: ET.fromstring(zin.read(part_name)) for part_name in grouped}
 
-    result = apply_operations_to_document_xml(document_root, operations)
-    patched_document_xml = ET.tostring(document_root, encoding="utf-8", xml_declaration=True)
+    result = PatchResult()
+    patched_xml: dict[str, bytes] = {}
+    for part_name, part_ops in grouped.items():
+        part_result = apply_operations_to_xml_root(roots[part_name], part_ops)
+        result.applied_count += part_result.applied_count
+        result.skipped_count += part_result.skipped_count
+        patched_xml[part_name] = ET.tostring(roots[part_name], encoding="utf-8", xml_declaration=True)
 
     src = BytesIO(docx_bytes)
     out = BytesIO()
     with zipfile.ZipFile(src, "r") as zin, zipfile.ZipFile(out, "w") as zout:
         for info in zin.infolist():
             payload = zin.read(info.filename)
-            if info.filename == "word/document.xml":
-                payload = patched_document_xml
+            if info.filename in patched_xml:
+                payload = patched_xml[info.filename]
             zout.writestr(info, payload)
     return out.getvalue(), result
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Patch docx by stable OOXML paths")
+    parser = argparse.ArgumentParser(
+        description=(
+            "Apply OOXML-path patch operations in test/validation mode. "
+            "Do not use this CLI as the production audit patch entrypoint."
+        )
+    )
     parser.add_argument("--docx", required=True, type=Path, help="Input docx")
     parser.add_argument("--operations", required=True, type=Path, help="JSON file containing patch operations")
     parser.add_argument("--out", required=True, type=Path, help="Output patched docx")
+    parser.add_argument(
+        "--test-tool",
+        action="store_true",
+        help="Acknowledge that this CLI is for local tests/validation only.",
+    )
     args = parser.parse_args()
+
+    if not args.test_tool:
+        raise SystemExit(
+            "refusing to run without --test-tool. "
+            + VALIDATION_ONLY_NOTICE
+        )
 
     operations_raw = json.loads(args.operations.read_text(encoding="utf-8"))
     if not isinstance(operations_raw, list):
@@ -448,7 +509,13 @@ def main() -> int:
     args.out.write_bytes(patched)
     print(
         json.dumps(
-            {"applied_count": result.applied_count, "skipped_count": result.skipped_count, "out": str(args.out)},
+            {
+                "mode": "validation-only",
+                "notice": VALIDATION_ONLY_NOTICE,
+                "applied_count": result.applied_count,
+                "skipped_count": result.skipped_count,
+                "out": str(args.out),
+            },
             ensure_ascii=False,
         )
     )
