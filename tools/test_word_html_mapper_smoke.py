@@ -11,6 +11,8 @@ from pathlib import Path
 import urllib.request
 import uuid
 
+from validate_word_html_ooxml_mapping import validate_docx_html_mapping
+
 
 def convert_via_onlyoffice(api_url: str, src_path: Path) -> str:
     boundary = f"----WordHtmlMapperSmoke{uuid.uuid4().hex}"
@@ -122,6 +124,12 @@ def main() -> int:
 
             mapped_html = mapped_path.read_text(encoding="utf-8")
             assert_mapping(mapped_html, src_path)
+            validation = validate_docx_html_mapping(src_path, mapped_html)
+            if validation.issues:
+                raise AssertionError(
+                    f"{src_path.name}: mapping validation failed with {len(validation.issues)} issues: "
+                    f"{[issue.code for issue in validation.issues[:5]]}"
+                )
 
             final_html_path = output_dir / f"{src_path.stem}.mapped.html"
             final_html_path.write_text(mapped_html, encoding="utf-8")
@@ -134,6 +142,9 @@ def main() -> int:
                     "has_block_path": "data-ooxml-path=" in mapped_html,
                     "has_run_mapping": "data-ooxml-r-id=" in mapped_html,
                     "has_text_mapping": "data-ooxml-t-id=" in mapped_html,
+                    "validation_checked": validation.checked,
+                    "validation_passed": validation.passed,
+                    "validation_issue_count": len(validation.issues),
                 }
             )
 

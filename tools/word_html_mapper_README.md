@@ -37,11 +37,21 @@ python3 tools/word_html_mapper.py \
 python3 tools/test_word_html_mapper_unit.py
 ```
 
+如需校验 `data-ooxml-path` 是否真的能回指到同一个 OOXML 节点，并且段落/行内文本与 HTML 一致，可执行：
+
+```bash
+python3 tools/validate_word_html_ooxml_mapping.py \
+  --docx ./sample.docx \
+  --html ./sample.mapped.html
+```
+
 如需对真实样本做 smoke test，可在已启动业务侧 `docx -> html` 接口后执行：
 
 ```bash
 python3 tools/test_word_html_mapper_smoke.py --limit 3
 ```
+
+当前 smoke test 也会自动执行上述验证，不再只是检查属性是否存在。
 
 ## 当前集成边界
 
